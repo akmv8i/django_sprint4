@@ -1,12 +1,31 @@
-{% extends "base.html" %}
-{% block title %}
-  Лента записей
-{% endblock %}
+{% extends 'base.html' %}
+
+{% block title %}Главная страница{% endblock %}
+
 {% block content %}
-  {% for post in page_obj %}
-    <article class="mb-5">
-      {% include "includes/post_card.html" %}
-    </article>
-  {% endfor %}
-  {% include "includes/paginator.html" %}
+    <h2>Лента записей</h2>
+    {% for post in page_obj %}
+        <article class="post">
+            <h3>{{ post.title }}</h3>
+            <div class="post-meta">
+                <p>
+                    {% if post.location %}
+                        Место: {{ post.location.name }}
+                    {% else %}
+                        Место: Планета Земля
+                    {% endif %}
+                </p>
+                <p>Дата: {{ post.pub_date|date:"d E Y" }}</p>
+                <p>Категория: <a href="{% url 'blog:category_posts' post.category.slug %}">{{ post.category.title }}</a></p>
+                <p>Автор: <a href="{% url 'blog:profile' post.author.username %}">{{ post.author.get_full_name|default:post.author.username }}</a></p>
+                <p>Комментариев: ({{ post.comment_count }})</p>
+            </div>
+            <p>{{ post.text|truncatewords:50 }}</p>
+            {% if post.image %}
+                <img src="{{ post.image.url }}" alt="{{ post.title }}" class="img-fluid" style="max-width: 100%; height: auto; margin: 10px 0;">
+            {% endif %}
+            <a href="{% url 'blog:post_detail' post.id %}" class="read-more">Читать полный текст</a>
+        </article>
+    {% endfor %}
+    {% include "includes/paginator.html" %}
 {% endblock %}
