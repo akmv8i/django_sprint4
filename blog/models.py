@@ -1,8 +1,9 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from django.db.models import Count
 
 User = get_user_model()
-
 
 class Category(models.Model):
     """Модель категории"""
@@ -39,7 +40,6 @@ class Category(models.Model):
     def __str__(self):
         return self.title
 
-
 class Location(models.Model):
     """Модель местоположения"""
 
@@ -64,6 +64,20 @@ class Location(models.Model):
     def __str__(self):
         return self.name
 
+class PostManager(models.Manager):
+    """Менеджер для фильтрации постов"""
+    
+    def published(self):
+        """Только опубликованные посты - для главной страницы и категорий"""
+        return self.filter(
+            is_published=True,
+            pub_date__lte=timezone.now(),
+            category__is_published=True
+        ).order_by('-pub_date')
+    
+    def for_author(self, author):
+        """Все посты автора (включая черновики) - для страницы профиля"""
+        return self.filter(author=author).order_by('-pub_date')
 
 class Post(models.Model):
     """Модель публикации"""
@@ -116,6 +130,9 @@ class Post(models.Model):
         verbose_name='Добавлено'
     )
 
+    objects = models.Manager()
+    published_objects = PostManager()
+
     class Meta:
         verbose_name = 'публикация'
         verbose_name_plural = 'Публикации'
@@ -123,7 +140,6 @@ class Post(models.Model):
 
     def __str__(self):
         return self.title
-
 
 class Comment(models.Model):
     """Модель комментария"""

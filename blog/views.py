@@ -8,16 +8,11 @@ from django.db.models import Count
 from .models import Post, Category, Comment
 from .forms import PostForm, CommentForm
 
-
 def index(request):
-    """Главная страница с пагинацией"""
-    posts = Post.objects.filter(
-        is_published=True,
-        pub_date__lte=timezone.now(),
-        category__is_published=True
-    ).select_related('category', 'location', 'author').annotate(
+    """Главная страница с пагинацией - только опубликованные посты"""
+    posts = Post.published_objects.published().annotate(
         comment_count=Count('comments')
-    ).order_by('-pub_date')
+    ).select_related('category', 'location', 'author')
 
     paginator = Paginator(posts, 10)
     page_number = request.GET.get('page')
@@ -26,23 +21,32 @@ def index(request):
     context = {'page_obj': page_obj}
     return render(request, 'blog/index.html', context)
 
-
 def post_detail(request, post_id):
     """Страница отдельной публикации"""
     post = get_object_or_404(Post, id=post_id)
-
-    if not post.is_published and post.author != request.user:
+    
+    if not post.is_published and request.user != post.author:
         raise Http404("Пост не найден")
-
-    if post.pub_date > timezone.now() and post.author != request.user:
+    
+    if not post.category.is_published and request.user != post.author:
         raise Http404("Пост не найден")
-
-    if not post.category.is_published and post.author != request.user:
+    
+    if post.pub_date > timezone.now() and request.user != post.author:
         raise Http404("Пост не найден")
-
+    
+    if request.user != post.author:
+        post = get_object_or_404(
+            Post.objects.filter(
+                is_published=True,
+                pub_date__lte=timezone.now(),
+                category__is_published=True
+            ),
+            id=post_id
+        )
+    
     comments = post.comments.all()
     form = CommentForm()
-
+    
     context = {
         'post': post,
         'comments': comments,
@@ -50,22 +54,19 @@ def post_detail(request, post_id):
     }
     return render(request, 'blog/detail.html', context)
 
-
 def category_posts(request, category_slug):
-    """Страница категории с пагинацией"""
+    """Страница категории с пагинацией - только опубликованные посты"""
     category = get_object_or_404(
         Category,
         slug=category_slug,
         is_published=True
     )
 
-    posts = Post.objects.filter(
-        category=category,
-        is_published=True,
-        pub_date__lte=timezone.now()
-    ).select_related('category', 'location', 'author').annotate(
+    posts = Post.published_objects.published().filter(
+        category=category
+    ).annotate(
         comment_count=Count('comments')
-    ).order_by('-pub_date')
+    ).select_related('category', 'location', 'author')
 
     paginator = Paginator(posts, 10)
     page_number = request.GET.get('page')
@@ -77,33 +78,25 @@ def category_posts(request, category_slug):
     }
     return render(request, 'blog/category.html', context)
 
-
 def profile(request, username):
-    """Страница пользователя с пагинацией"""
+    """Страница пользователя с пагинацией - автор видит все свои посты"""
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
     author = get_object_or_404(User, username=username)
 
     if request.user == author:
-        posts = Post.objects.filter(
-            author=author
-        ).select_related(
+        posts = Post.objects.filter(author=author).select_related(
             'category', 'location'
         ).annotate(
             comment_count=Count('comments')
         ).order_by('-pub_date')
     else:
-        posts = Post.objects.filter(
-            author=author,
-            is_published=True,
-            pub_date__lte=timezone.now(),
-            category__is_published=True
-        ).select_related(
-            'category', 'location'
+        posts = Post.published_objects.published().filter(
+            author=author
         ).annotate(
             comment_count=Count('comments')
-        ).order_by('-pub_date')
+        ).select_related('category', 'location')
 
     paginator = Paginator(posts, 10)
     page_number = request.GET.get('page')
@@ -114,7 +107,6 @@ def profile(request, username):
         'page_obj': page_obj,
     }
     return render(request, 'blog/profile.html', context)
-
 
 @login_required
 def post_create(request):
@@ -129,7 +121,6 @@ def post_create(request):
     else:
         form = PostForm()
     return render(request, 'blog/create.html', {'form': form})
-
 
 @login_required
 def post_edit(request, post_id):
@@ -148,7 +139,6 @@ def post_edit(request, post_id):
         form = PostForm(instance=post)
     return render(request, 'blog/create.html', {'form': form, 'post': post})
 
-
 @login_required
 def post_delete(request, post_id):
     """Удаление поста"""
@@ -162,7 +152,6 @@ def post_delete(request, post_id):
         return redirect('blog:profile', username=request.user.username)
 
     return render(request, 'blog/delete.html', {'post': post})
-
 
 @login_required
 @require_http_methods(['POST'])
@@ -185,7 +174,6 @@ def add_comment(request, post_id):
 
     return redirect('blog:post_detail', post_id=post_id)
 
-
 @login_required
 def edit_comment(request, post_id, comment_id):
     """Редактирование комментария"""
@@ -203,7 +191,6 @@ def edit_comment(request, post_id, comment_id):
         form = CommentForm(instance=comment)
 
     return render(request, 'blog/comment.html', {'form': form, 'comment': comment})
-
 
 @login_required
 def delete_comment(request, post_id, comment_id):
